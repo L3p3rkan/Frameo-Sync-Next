@@ -10,11 +10,26 @@ export function normalizeServerUrl(input: string) {
 export function normalizeApiKey(input: string) { return input.trim(); }
 function headers(key: string, json = false) { return { Accept: 'application/json', ...(json ? { 'Content-Type': 'application/json' } : {}), 'x-api-key': normalizeApiKey(key) }; }
 
+async function fetchWithRetry(url: string, options: RequestInit, label: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`Immich returned HTTP ${response.status}`);
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : 'Unknown network error';
+  throw new Error(`${label} failed after 3 attempts: ${detail}`);
+}
+
 export async function getAlbums(serverUrl: string, apiKey: string): Promise<ImmichAlbum[]> {
   const server = normalizeServerUrl(serverUrl); const key = normalizeApiKey(apiKey);
   if (!server || !key) throw new Error('Immich server and API key are required.');
-  const response = await fetch(`${server}/api/albums`, { headers: headers(key) });
-  if (!response.ok) throw new Error(`Immich returned HTTP ${response.status}`);
+  const response = await fetchWithRetry(`${server}/api/albums`, { headers: headers(key) }, 'Loading albums');
   return response.json();
 }
 
@@ -30,12 +45,11 @@ export async function getAlbumAssets(serverUrl: string, apiKey: string, albumId:
   const size = 250;
 
   while (true) {
-    const response = await fetch(`${server}/api/search/metadata`, {
+    const response = await fetchWithRetry(`${server}/api/search/metadata`, {
       method: 'POST',
       headers: headers(key, true),
       body: JSON.stringify({ albumIds: [albumId], page, size }),
-    });
-    if (!response.ok) throw new Error(`Immich returned HTTP ${response.status}`);
+    }, `Loading album photos (page ${page})`);
 
     const data = await response.json();
     const items: ImmichAsset[] = data?.assets?.items || [];
