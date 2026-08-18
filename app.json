@@ -7,6 +7,7 @@
     "userInterfaceStyle": "automatic",
     "scheme": "frameo-sync",
     "plugins": ["expo-router", "expo-secure-store"],
-    "experiments": { "typedRoutes": true }
+    "experiments": { "typedRoutes": true },
+    "web": { "bundler": "metro" }
   }
 }
