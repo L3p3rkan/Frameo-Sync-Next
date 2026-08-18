@@ -57,18 +57,22 @@ export function parseIcs(text: string): CalendarEvent[] {
   return events;
 }
 
+function normalizeCalendarUrl(url: string) {
+  const trimmed = url.trim();
+  if (/^webcal:\/\//i.test(trimmed)) return trimmed.replace(/^webcal:\/\//i, 'https://');
+  return trimmed;
+}
+
 export async function fetchCalendar(url: string): Promise<CalendarEvent[]> {
-  const response = await fetch(url);
+  const response = await fetch(normalizeCalendarUrl(url));
   if (!response.ok) throw new Error(`Calendar returned HTTP ${response.status}`);
   return parseIcs(await response.text());
 }
 
 function startOfDay(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-function endOfDay(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
 
 export function eventsForTodayAndTomorrow(events: CalendarEvent[], now = new Date()) {
   const today = startOfDay(now);
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const afterTomorrow = new Date(today); afterTomorrow.setDate(afterTomorrow.getDate() + 2);
   return events.filter(e => e.start < afterTomorrow && (e.end || e.start) >= today).sort((a, b) => a.start.getTime() - b.start.getTime());
 }
