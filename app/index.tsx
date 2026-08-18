@@ -1,138 +1,20 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, FlatList } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAlbums, ImmichAlbum, normalizeServerUrl } from '../lib/immich';
+import { getAlbumAssets, getAlbums, ImmichAlbum, ImmichAsset, normalizeServerUrl, originalUrl, thumbnailUrl } from '../lib/immich';
 
-const SERVER_KEY = 'frameo.serverUrl';
-const API_KEY = 'frameo.apiKey';
-const ALBUM_KEY = 'frameo.albumId';
-const ALBUM_NAME_KEY = 'frameo.albumName';
-
+const SERVER_KEY = 'frameo.serverUrl'; const API_KEY = 'frameo.apiKey'; const ALBUM_KEY = 'frameo.albumId'; const ALBUM_NAME_KEY = 'frameo.albumName';
 export default function HomeScreen() {
-  const [serverUrl, setServerUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [albums, setAlbums] = useState<ImmichAlbum[]>([]);
-  const [selectedAlbum, setSelectedAlbum] = useState('');
-  const [selectedAlbumName, setSelectedAlbumName] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(true);
-  const [loadingAlbums, setLoadingAlbums] = useState(false);
-
-  useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem(SERVER_KEY),
-      SecureStore.getItemAsync(API_KEY),
-      AsyncStorage.getItem(ALBUM_KEY),
-      AsyncStorage.getItem(ALBUM_NAME_KEY),
-    ]).then(([server, key, albumId, albumName]) => {
-      setServerUrl(server || '');
-      setApiKey(key || '');
-      setSelectedAlbum(albumId || '');
-      setSelectedAlbumName(albumName || '');
-    }).finally(() => setBusy(false));
-  }, []);
-
-  async function connect() {
-    const normalizedServer = normalizeServerUrl(serverUrl);
-    const normalizedKey = apiKey.trim();
-    if (!normalizedServer || !normalizedKey) { setStatus('Enter both the Immich server and API key.'); return; }
-    setBusy(true);
-    try {
-      const nextAlbums = await getAlbums(normalizedServer, normalizedKey);
-      await AsyncStorage.setItem(SERVER_KEY, normalizedServer);
-      await SecureStore.setItemAsync(API_KEY, normalizedKey);
-      setServerUrl(normalizedServer);
-      setApiKey(normalizedKey);
-      setAlbums(nextAlbums);
-      setStatus(`Connected. Found ${nextAlbums.length} album${nextAlbums.length === 1 ? '' : 's'}.`);
-    } catch (error) {
-      setStatus(error instanceof Error ? `Connection failed: ${error.message}` : 'Connection failed.');
-    } finally { setBusy(false); }
-  }
-
-  async function chooseAlbum(album: ImmichAlbum) {
-    setSelectedAlbum(album.id);
-    setSelectedAlbumName(album.albumName);
-    await AsyncStorage.setItem(ALBUM_KEY, album.id);
-    await AsyncStorage.setItem(ALBUM_NAME_KEY, album.albumName);
-    setStatus(`Selected “${album.albumName}”.`);
-  }
-
-  async function refreshAlbums() {
-    setLoadingAlbums(true);
-    try {
-      const nextAlbums = await getAlbums(serverUrl, apiKey);
-      setAlbums(nextAlbums);
-      setStatus(`Loaded ${nextAlbums.length} album${nextAlbums.length === 1 ? '' : 's'}.`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not load albums.');
-    } finally { setLoadingAlbums(false); }
-  }
-
-  if (busy && !serverUrl && !apiKey) return <View style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Loading Frameo Sync…</Text></View>;
-
-  return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.container}
-      ListHeaderComponent={
-        <>
-          <Text style={styles.eyebrow}>FRAMEO SYNC</Text>
-          <Text style={styles.title}>Connect your photo server.</Text>
-          <Text style={styles.subtitle}>Connect to Immich, choose an album, and we'll build the photo sync on top of it.</Text>
-          <View style={styles.card}>
-            <Text style={styles.label}>Immich server</Text>
-            <TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://photos.example.com" style={styles.input} />
-            <Text style={styles.hint}>For your server, use https://immich.jaarsmafamily.com</Text>
-            <Text style={styles.label}>API key</Text>
-            <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your Immich API key" style={styles.input} />
-            <Pressable onPress={connect} disabled={busy} style={({ pressed }) => [styles.button, pressed && styles.pressed, busy && styles.disabled]}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Test Connection & Load Albums</Text>}
-            </Pressable>
-            {status ? <Text style={status.startsWith('Connection failed') || status.startsWith('Could not') ? styles.error : styles.success}>{status}</Text> : null}
-          </View>
-          {albums.length > 0 ? <Text style={styles.sectionTitle}>Choose an album</Text> : null}
-        </>
-      }
-      data={albums}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <Pressable onPress={() => chooseAlbum(item)} style={({ pressed }) => [styles.album, item.id === selectedAlbum && styles.selectedAlbum, pressed && styles.pressed]}>
-          <View style={styles.albumText}><Text style={styles.albumName}>{item.albumName}</Text><Text style={styles.albumCount}>{item.assetCount ?? 0} photos</Text></View>
-          {item.id === selectedAlbum ? <Text style={styles.check}>✓</Text> : null}
-        </Pressable>
-      )}
-      ListFooterComponent={albums.length > 0 ? <Pressable onPress={refreshAlbums} disabled={loadingAlbums} style={styles.refresh}>{loadingAlbums ? <ActivityIndicator /> : <Text style={styles.refreshText}>Refresh albums</Text>}</Pressable> : null}
-    />
-  );
+  const { width } = useWindowDimensions(); const [serverUrl,setServerUrl]=useState(''); const [apiKey,setApiKey]=useState(''); const [albums,setAlbums]=useState<ImmichAlbum[]>([]); const [assets,setAssets]=useState<ImmichAsset[]>([]); const [selectedAlbum,setSelectedAlbum]=useState(''); const [selectedAlbumName,setSelectedAlbumName]=useState(''); const [viewer,setViewer]=useState<ImmichAsset|null>(null); const [status,setStatus]=useState<string|null>(null); const [busy,setBusy]=useState(true); const [loadingPhotos,setLoadingPhotos]=useState(false); const [loadingAlbums,setLoadingAlbums]=useState(false);
+  useEffect(()=>{Promise.all([AsyncStorage.getItem(SERVER_KEY),SecureStore.getItemAsync(API_KEY),AsyncStorage.getItem(ALBUM_KEY),AsyncStorage.getItem(ALBUM_NAME_KEY)]).then(([s,k,a,n])=>{setServerUrl(s||'');setApiKey(k||'');setSelectedAlbum(a||'');setSelectedAlbumName(n||'');}).finally(()=>setBusy(false));},[]);
+  useEffect(()=>{if(selectedAlbum&&serverUrl&&apiKey) loadPhotos();},[selectedAlbum]);
+  async function connect(){const s=normalizeServerUrl(serverUrl),k=apiKey.trim();if(!s||!k){setStatus('Enter both the Immich server and API key.');return;}setBusy(true);try{const a=await getAlbums(s,k);await AsyncStorage.setItem(SERVER_KEY,s);await SecureStore.setItemAsync(API_KEY,k);setServerUrl(s);setApiKey(k);setAlbums(a);setStatus(`Connected. Found ${a.length} album${a.length===1?'':'s'}.`);if(selectedAlbum) await loadPhotos(s,k,selectedAlbum);}catch(e){setStatus(e instanceof Error?`Connection failed: ${e.message}`:'Connection failed.');}finally{setBusy(false);}}
+  async function loadPhotos(s=serverUrl,k=apiKey,a=selectedAlbum){if(!s||!k||!a)return;setLoadingPhotos(true);try{const p=await getAlbumAssets(s,k,a);setAssets(p);setStatus(`${p.length} photo${p.length===1?'':'s'} in ${selectedAlbumName||'selected album'}.`);}catch(e){setStatus(e instanceof Error?`Could not load photos: ${e.message}`:'Could not load photos.');}finally{setLoadingPhotos(false);}}
+  async function chooseAlbum(a:ImmichAlbum){setSelectedAlbum(a.id);setSelectedAlbumName(a.albumName);await AsyncStorage.setItem(ALBUM_KEY,a.id);await AsyncStorage.setItem(ALBUM_NAME_KEY,a.albumName);setStatus(`Loading ${a.albumName}…`);await loadPhotos(serverUrl,apiKey,a.id);}
+  async function refreshAlbums(){setLoadingAlbums(true);try{const a=await getAlbums(serverUrl,apiKey);setAlbums(a);setStatus(`Loaded ${a.length} album${a.length===1?'':'s'}.`);}catch(e){setStatus(e instanceof Error?e.message:'Could not load albums.');}finally{setLoadingAlbums(false);}}
+  const columns=width>=900?5:width>=600?4:2; const tile=(width-56-(columns-1)*10)/columns;
+  if(busy&&!serverUrl&&!apiKey)return <View style={styles.center}><ActivityIndicator/><Text style={styles.muted}>Loading Frameo Sync…</Text></View>;
+  return <View style={styles.screen}><FlatList data={assets} key={columns} numColumns={columns} keyExtractor={x=>x.id} contentContainerStyle={styles.container} columnWrapperStyle={columns>1?styles.row:undefined} ListHeaderComponent={<><Text style={styles.eyebrow}>FRAMEO SYNC</Text><Text style={styles.title}>Your Immich photos.</Text><Text style={styles.subtitle}>Connect, choose an album, and browse your memories.</Text><View style={styles.card}><Text style={styles.label}>Immich server</Text><TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://photos.example.com" style={styles.input}/><Text style={styles.hint}>Your server: https://immich.jaarsmafamily.com</Text><Text style={styles.label}>API key</Text><TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your Immich API key" style={styles.input}/><Pressable onPress={connect} disabled={busy} style={styles.button}>{busy?<ActivityIndicator color="#fff"/>:<Text style={styles.buttonText}>Test Connection & Load Albums</Text>}</Pressable>{status?<Text style={status.startsWith('Connection failed')||status.startsWith('Could not')?styles.error:styles.success}>{status}</Text>:null}</View>{albums.length>0?<Text style={styles.sectionTitle}>Choose an album</Text>:null}</>} ListEmptyComponent={selectedAlbum?(<View style={styles.empty}>{loadingPhotos?<ActivityIndicator/>:<><Text style={styles.emptyTitle}>No photos found</Text><Text style={styles.muted}>This album does not contain any photos yet.</Text></>}</View>):null} renderItem={({item})=><Pressable onPress={()=>setViewer(item)} style={({pressed})=>[styles.photo,{width:tile},pressed&&styles.pressed]}><Image source={{uri:thumbnailUrl(serverUrl,item.id),headers:{'x-api-key':apiKey.trim()}}} style={{width:tile,height:tile}} resizeMode="cover"/><Text numberOfLines={1} style={styles.caption}>{item.originalFileName||'Photo'}</Text></Pressable>} ListFooterComponent={<>{albums.map(a=><Pressable key={a.id} onPress={()=>chooseAlbum(a)} style={[styles.album,a.id===selectedAlbum&&styles.selectedAlbum]}><View><Text style={styles.albumName}>{a.albumName}</Text><Text style={styles.albumCount}>{a.assetCount??0} photos</Text></View>{a.id===selectedAlbum?<Text style={styles.check}>✓</Text>:null}</Pressable>)}{albums.length>0?<Pressable onPress={refreshAlbums} disabled={loadingAlbums} style={styles.refresh}>{loadingAlbums?<ActivityIndicator/>:<Text style={styles.refreshText}>Refresh albums</Text>}</Pressable>:null}</>}/><Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}><View style={styles.viewer}><Pressable style={styles.close} onPress={()=>setViewer(null)}><Text style={styles.closeText}>×</Text></Pressable>{viewer?<Image source={{uri:originalUrl(serverUrl,viewer.id),headers:{'x-api-key':apiKey.trim()}}} style={styles.fullImage} resizeMode="contain"/>:null}</View></Modal></View>;
 }
-
-const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: '#f5f5f2' },
-  container: { padding: 28, paddingBottom: 50 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#f5f5f2' },
-  eyebrow: { fontSize: 13, fontWeight: '700', letterSpacing: 2, marginBottom: 10 },
-  title: { fontSize: 36, fontWeight: '700', lineHeight: 42, marginBottom: 12 },
-  subtitle: { fontSize: 16, lineHeight: 24, color: '#555', marginBottom: 28 },
-  card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, gap: 10 },
-  label: { fontSize: 14, fontWeight: '700', marginTop: 4 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 16, backgroundColor: '#fafafa' },
-  hint: { color: '#777', fontSize: 12, marginBottom: 6 },
-  button: { minHeight: 50, borderRadius: 12, backgroundColor: '#171717', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  pressed: { opacity: 0.8 },
-  disabled: { opacity: 0.55 },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  success: { color: '#177245', fontWeight: '600', marginTop: 4 },
-  error: { color: '#b42318', fontWeight: '600', marginTop: 4 },
-  sectionTitle: { fontSize: 20, fontWeight: '700', marginTop: 28, marginBottom: 10 },
-  album: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#e4e4df' },
-  selectedAlbum: { borderColor: '#171717', borderWidth: 2 },
-  albumText: { flex: 1 },
-  albumName: { fontSize: 16, fontWeight: '700' },
-  albumCount: { color: '#777', marginTop: 4, fontSize: 13 },
-  check: { fontSize: 22, fontWeight: '800', marginLeft: 12 },
-  refresh: { alignItems: 'center', padding: 16 },
-  refreshText: { fontWeight: '700' },
-  muted: { color: '#666' },
-});
+const styles=StyleSheet.create({screen:{flex:1,backgroundColor:'#f5f5f2'},container:{padding:28,paddingBottom:60},center:{flex:1,alignItems:'center',justifyContent:'center',gap:10,backgroundColor:'#f5f5f2'},eyebrow:{fontSize:13,fontWeight:'700',letterSpacing:2,marginBottom:10},title:{fontSize:36,fontWeight:'700',lineHeight:42,marginBottom:12},subtitle:{fontSize:16,lineHeight:24,color:'#555',marginBottom:28},card:{backgroundColor:'#fff',borderRadius:20,padding:20,gap:10,marginBottom:8},label:{fontSize:14,fontWeight:'700',marginTop:4},input:{borderWidth:1,borderColor:'#ddd',borderRadius:12,paddingHorizontal:14,paddingVertical:13,fontSize:16,backgroundColor:'#fafafa'},hint:{color:'#777',fontSize:12,marginBottom:6},button:{minHeight:50,borderRadius:12,backgroundColor:'#171717',alignItems:'center',justifyContent:'center',marginTop:8},buttonText:{color:'#fff',fontWeight:'700',fontSize:15},pressed:{opacity:.8},success:{color:'#177245',fontWeight:'600',marginTop:4},error:{color:'#b42318',fontWeight:'600',marginTop:4},sectionTitle:{fontSize:20,fontWeight:'700',marginTop:20,marginBottom:10},row:{gap:10},photo:{backgroundColor:'#fff',borderRadius:12,overflow:'hidden',marginBottom:14},caption:{padding:7,fontSize:12,color:'#555'},album:{backgroundColor:'#fff',borderRadius:16,padding:16,marginBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderWidth:1,borderColor:'#e4e4df'},selectedAlbum:{borderColor:'#171717',borderWidth:2},albumName:{fontSize:16,fontWeight:'700'},albumCount:{color:'#777',marginTop:4,fontSize:13},check:{fontSize:22,fontWeight:'800'},refresh:{alignItems:'center',padding:16},refreshText:{fontWeight:'700'},empty:{alignItems:'center',padding:40,gap:8},emptyTitle:{fontSize:18,fontWeight:'700'},muted:{color:'#666'},viewer:{flex:1,backgroundColor:'rgba(0,0,0,.96)',justifyContent:'center',alignItems:'center'},fullImage:{width:'100%',height:'85%'},close:{position:'absolute',right:22,top:55,zIndex:2,width:44,height:44,borderRadius:22,backgroundColor:'rgba(255,255,255,.2)',alignItems:'center',justifyContent:'center'},closeText:{color:'#fff',fontSize:32,lineHeight:34}});
