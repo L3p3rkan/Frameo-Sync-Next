@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAlbumAssets, getAlbums, ImmichAlbum, ImmichAsset, normalizeServerUrl, originalUrl, thumbnailUrl } from '../lib/immich';
 
 const SERVER_KEY = 'frameo.serverUrl'; const API_KEY = 'frameo.apiKey'; const ALBUM_KEY = 'frameo.albumId'; const ALBUM_NAME_KEY = 'frameo.albumName';
+
+async function getStoredApiKey() {
+  if (Platform.OS === 'web') return AsyncStorage.getItem(API_KEY);
+  return SecureStore.getItemAsync(API_KEY);
+}
+async function storeApiKey(value: string) {
+  if (Platform.OS === 'web') return AsyncStorage.setItem(API_KEY, value);
+  return SecureStore.setItemAsync(API_KEY, value);
+}
+
 export default function HomeScreen() {
   const { width } = useWindowDimensions(); const [serverUrl,setServerUrl]=useState(''); const [apiKey,setApiKey]=useState(''); const [albums,setAlbums]=useState<ImmichAlbum[]>([]); const [assets,setAssets]=useState<ImmichAsset[]>([]); const [selectedAlbum,setSelectedAlbum]=useState(''); const [selectedAlbumName,setSelectedAlbumName]=useState(''); const [viewer,setViewer]=useState<ImmichAsset|null>(null); const [status,setStatus]=useState<string|null>(null); const [busy,setBusy]=useState(true); const [loadingPhotos,setLoadingPhotos]=useState(false); const [loadingAlbums,setLoadingAlbums]=useState(false);
-  useEffect(()=>{Promise.all([AsyncStorage.getItem(SERVER_KEY),SecureStore.getItemAsync(API_KEY),AsyncStorage.getItem(ALBUM_KEY),AsyncStorage.getItem(ALBUM_NAME_KEY)]).then(([s,k,a,n])=>{setServerUrl(s||'');setApiKey(k||'');setSelectedAlbum(a||'');setSelectedAlbumName(n||'');}).finally(()=>setBusy(false));},[]);
+  useEffect(()=>{Promise.all([AsyncStorage.getItem(SERVER_KEY),getStoredApiKey(),AsyncStorage.getItem(ALBUM_KEY),AsyncStorage.getItem(ALBUM_NAME_KEY)]).then(([s,k,a,n])=>{setServerUrl(s||'');setApiKey(k||'');setSelectedAlbum(a||'');setSelectedAlbumName(n||'');}).finally(()=>setBusy(false));},[]);
   useEffect(()=>{if(selectedAlbum&&serverUrl&&apiKey) loadPhotos();},[selectedAlbum]);
-  async function connect(){const s=normalizeServerUrl(serverUrl),k=apiKey.trim();if(!s||!k){setStatus('Enter both the Immich server and API key.');return;}setBusy(true);try{const a=await getAlbums(s,k);await AsyncStorage.setItem(SERVER_KEY,s);await SecureStore.setItemAsync(API_KEY,k);setServerUrl(s);setApiKey(k);setAlbums(a);setStatus(`Connected. Found ${a.length} album${a.length===1?'':'s'}.`);if(selectedAlbum) await loadPhotos(s,k,selectedAlbum);}catch(e){setStatus(e instanceof Error?`Connection failed: ${e.message}`:'Connection failed.');}finally{setBusy(false);}}
+  async function connect(){const s=normalizeServerUrl(serverUrl),k=apiKey.trim();if(!s||!k){setStatus('Enter both the Immich server and API key.');return;}setBusy(true);try{const a=await getAlbums(s,k);await AsyncStorage.setItem(SERVER_KEY,s);await storeApiKey(k);setServerUrl(s);setApiKey(k);setAlbums(a);setStatus(`Connected. Found ${a.length} album${a.length===1?'':'s'}.`);if(selectedAlbum) await loadPhotos(s,k,selectedAlbum);}catch(e){setStatus(e instanceof Error?`Connection failed: ${e.message}`:'Connection failed.');}finally{setBusy(false);}}
   async function loadPhotos(s=serverUrl,k=apiKey,a=selectedAlbum){if(!s||!k||!a)return;setLoadingPhotos(true);try{const p=await getAlbumAssets(s,k,a);setAssets(p);setStatus(`${p.length} photo${p.length===1?'':'s'} in ${selectedAlbumName||'selected album'}.`);}catch(e){setStatus(e instanceof Error?`Could not load photos: ${e.message}`:'Could not load photos.');}finally{setLoadingPhotos(false);}}
   async function chooseAlbum(a:ImmichAlbum){setSelectedAlbum(a.id);setSelectedAlbumName(a.albumName);await AsyncStorage.setItem(ALBUM_KEY,a.id);await AsyncStorage.setItem(ALBUM_NAME_KEY,a.albumName);setStatus(`Loading ${a.albumName}…`);await loadPhotos(serverUrl,apiKey,a.id);}
   async function refreshAlbums(){setLoadingAlbums(true);try{const a=await getAlbums(serverUrl,apiKey);setAlbums(a);setStatus(`Loaded ${a.length} album${a.length===1?'':'s'}.`);}catch(e){setStatus(e instanceof Error?e.message:'Could not load albums.');}finally{setLoadingAlbums(false);}}
